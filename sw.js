@@ -1,6 +1,6 @@
 // Guarda la app en el móvil para que abra al instante y funcione sin conexión en el ensayo.
 // Sube VERSION cada vez que cambies index.html para que los móviles descarguen la nueva versión.
-const VERSION = "pulso-v6";
+const VERSION = "pulso-v7";
 const SHELL = ["./", "index.html", "manifest.webmanifest", "apple-touch-icon.png", "icon-192.png", "icon-512.png"];
 
 // GitHub Pages pide al navegador guardar cada archivo 10 minutos; "no-cache" obliga a preguntar

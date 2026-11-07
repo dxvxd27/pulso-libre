@@ -429,6 +429,15 @@ function audio() {
     const AC = window.AudioContext || window.webkitAudioContext;
     try { ctx = new AC({ latencyHint: "interactive" }); } catch { ctx = new AC(); }
     master = ctx.createGain(); master.gain.value = 1; master.connect(ctx.destination);
+    // Lightning/USB-C jack adapters power down their converter during silence and can swallow the
+    // start of playback. A constant, inaudible signal at the very top of the spectrum keeps it awake.
+    try {
+      const n = ctx.createBuffer(1, 2048, ctx.sampleRate), d = n.getChannelData(0);
+      for (let i = 0; i < d.length; i++) d[i] = (i & 1 ? 1 : -1) * 1e-4;
+      const s = ctx.createBufferSource(); s.buffer = n; s.loop = true; s.connect(ctx.destination); s.start();
+    } catch {}
+    // If iOS interrupts the audio (adapter plugged in, a call…) while playing, get it running again.
+    ctx.onstatechange = () => { if (E.playing && ctx.state !== "running") { try { ctx.resume(); } catch {} } };
     try { keepAlive = new Audio(silentWavUri()); keepAlive.loop = true; keepAlive.setAttribute("playsinline", ""); } catch { keepAlive = null; }
   }
   // A one-sample silent sound started during the tap unlocks output on older iOS.
