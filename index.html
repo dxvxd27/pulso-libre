@@ -238,10 +238,11 @@ const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 const SUBS = [[1, "Negras"], [2, "Corcheas"], [3, "Tresillos"], [4, "Semicorcheas"]];
 const subName = n => (SUBS.find(s => s[0] === n) || SUBS[0])[1];
-const defaultAccents = n => Array.from({ length: n }, (_, i) => (i === 0 ? 2 : 1));
+// No accent by default: changing songs mid-set never shifts where the accent falls.
+const defaultAccents = n => Array.from({ length: n }, () => 1);
 function fixAccents(acc, n) {
   const a = Array.isArray(acc) ? acc.slice(0, n) : [];
-  while (a.length < n) a.push(a.length === 0 ? 2 : 1);
+  while (a.length < n) a.push(1);
   return a;
 }
 let toastTimer;
