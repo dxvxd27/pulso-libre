@@ -530,8 +530,16 @@ async function loadSlots() {
 /* Wake the audio and decode the sounds as soon as a finger lands, so playback can start the instant it lifts. */
 function warmAudio() {
   audio();
+  holdSession();
   if (!slotsReady) loadSlots();
 }
+/* Keep the phone's audio session open from the first touch until the app closes. Opening it on every
+   Play made iOS re-route the output, and with a jack adapter the first click was lost each time. */
+function holdSession() {
+  try { if (keepAlive && keepAlive.paused) keepAlive.play()?.catch(() => {}); } catch {}
+}
+/* Optional extra margin before the first click, for outputs that still need a moment to wake up. */
+function safeStartOn() { try { return localStorage.getItem("pulsolibre-safestart") === "1"; } catch { return false; } }
 function playBuf(buf, vol, when) {
   if (!buf || vol <= 0) return;
   const src = ctx.createBufferSource(); src.buffer = buf;
@@ -621,14 +629,14 @@ function schedule() {
 }
 async function start() {
   audio();
-  try { keepAlive?.play()?.catch(() => {}); } catch {}
+  holdSession();
   if (ctx.state !== "running") { try { await ctx.resume(); } catch {} }
   if (ctx.state !== "running") { toast("El móvil ha bloqueado el sonido. Toca «Tocar» otra vez."); return; }
   if (!slotsReady) await loadSlots();
   if (!slotBuf.accent && !slotBuf.beat) { toast("No se pudieron cargar los sonidos."); return; }
   if (E.playing) return;
-  // First click 15 ms out: just enough to be scheduled cleanly, short enough to feel instant.
-  E.playing = true; E.beat = 0; E.subI = 0; E.queue = []; E.nextTime = ctx.currentTime + 0.015;
+  // First click 15 ms out (feels instant), or 300 ms with "Arranque seguro" for slow-waking outputs.
+  E.playing = true; E.beat = 0; E.subI = 0; E.queue = []; E.nextTime = ctx.currentTime + (safeStartOn() ? 0.3 : 0.015);
   if (E.pendingMeter) { applyMeter(E.pendingMeter); E.pendingMeter = null; }
   E.ramp = null;
   schedule();
@@ -638,7 +646,6 @@ async function start() {
 }
 function stop() {
   E.playing = false; clearInterval(E.timer); E.timer = null; E.queue = []; E.lit = -1;
-  try { keepAlive?.pause(); } catch {}
   if (E.ramp) { E.ramp = null; }
   if (E.pendingMeter) { applyMeter(E.pendingMeter); E.pendingMeter = null; }
   try { E.wake?.release(); } catch {} E.wake = null;
@@ -1052,6 +1059,10 @@ function renderSounds() {
         <input id="keep-awake" type="checkbox" style="width:22px;height:22px;margin:2px 0 0;accent-color:var(--led)"${keepAwakeOn() ? " checked" : ""}>
         <span class="grow"><b>Mantener activo el adaptador de audio</b><br><span class="muted" style="font-size:13px">Evita que un adaptador de jack se coma el primer golpe. Si por los altavoces oyes un zumbido o soplido, desactívalo. Se guarda solo en este móvil.</span></span>
       </label>
+      <label class="row" style="gap:12px;align-items:flex-start;cursor:pointer">
+        <input id="safe-start" type="checkbox" style="width:22px;height:22px;margin:2px 0 0;accent-color:var(--led)"${safeStartOn() ? " checked" : ""}>
+        <span class="grow"><b>Arranque seguro</b><br><span class="muted" style="font-size:13px">Espera 0,3 s antes del primer golpe para darle tiempo al adaptador. Actívalo solo si aun así se pierde el primer golpe. Se guarda solo en este móvil.</span></span>
+      </label>
     </section>
     <div class="row"><span class="label grow">Tus sonidos</span>
       <label class="btn primary" for="upload" style="display:inline-block">Subir sonido</label>
@@ -1244,6 +1255,9 @@ document.addEventListener("change", async e => {
     const items = (sl.items || []).map(x => ({ ...x }));
     items[+t.dataset.trans].trans = clamp(Math.round((parseFloat(String(t.value).replace(",", ".")) || 0) * 2) / 2, 0, 12);
     const { id, ...rest } = sl; await Store.put("setlists", id, { ...rest, items });
+  } else if (t.id === "safe-start") {
+    try { localStorage.setItem("pulsolibre-safestart", t.checked ? "1" : "0"); } catch {}
+    toast(t.checked ? "Arranque seguro: el primer golpe espera 0,3 s" : "Arranque inmediato");
   } else if (t.id === "keep-awake") {
     setKeepAwake(t.checked);
     toast(t.checked ? "Adaptador activo: sin cortes al arrancar" : "Señal del adaptador apagada");
