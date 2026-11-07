@@ -498,9 +498,16 @@ async function getBuffer(id) {
   return buf;
 }
 const slotBuf = { accent: null, beat: null, sub: null };
+let slotsReady = false;
 async function loadSlots() {
   const c = cfg();
   for (const k of ["accent", "beat", "sub"]) slotBuf[k] = await getBuffer(c[k].sound);
+  slotsReady = true;
+}
+/* Wake the audio and decode the sounds as soon as a finger lands, so playback can start the instant it lifts. */
+function warmAudio() {
+  audio();
+  if (!slotsReady) loadSlots();
 }
 function playBuf(buf, vol, when) {
   if (!buf || vol <= 0) return;
@@ -594,15 +601,17 @@ async function start() {
   try { keepAlive?.play()?.catch(() => {}); } catch {}
   if (ctx.state !== "running") { try { await ctx.resume(); } catch {} }
   if (ctx.state !== "running") { toast("El móvil ha bloqueado el sonido. Toca «Tocar» otra vez."); return; }
-  await loadSlots();
+  if (!slotsReady) await loadSlots();
   if (!slotBuf.accent && !slotBuf.beat) { toast("No se pudieron cargar los sonidos."); return; }
-  E.playing = true; E.beat = 0; E.subI = 0; E.queue = []; E.nextTime = ctx.currentTime + 0.06;
+  if (E.playing) return;
+  // First click 15 ms out: just enough to be scheduled cleanly, short enough to feel instant.
+  E.playing = true; E.beat = 0; E.subI = 0; E.queue = []; E.nextTime = ctx.currentTime + 0.015;
   if (E.pendingMeter) { applyMeter(E.pendingMeter); E.pendingMeter = null; }
   E.ramp = null;
   schedule();
   E.timer = setInterval(schedule, 25);
-  try { E.wake = await navigator.wakeLock?.request("screen"); } catch { E.wake = null; }
   renderMetro();
+  try { navigator.wakeLock?.request("screen").then(w => { E.wake = w; }, () => {}); } catch {}
 }
 function stop() {
   E.playing = false; clearInterval(E.timer); E.timer = null; E.queue = []; E.lit = -1;
@@ -673,6 +682,25 @@ document.addEventListener("pointerdown", e => {
   if (!e.target.closest('[data-act="tap"]')) return;
   e.preventDefault(); tap();
 });
+// Play/stop: press prepares the audio, release starts or stops it. Sliding off the button cancels.
+let playPress = null;
+document.addEventListener("pointerdown", e => {
+  const b = e.target.closest('[data-act="toggle"]');
+  if (!b) { if (!ctx) warmAudio(); return; }
+  e.preventDefault();
+  playPress = e.pointerId;
+  try { b.setPointerCapture(e.pointerId); } catch {}
+  warmAudio();
+});
+document.addEventListener("pointerup", e => {
+  if (playPress === null || e.pointerId !== playPress) return;
+  playPress = null;
+  const b = document.querySelector('[data-act="toggle"]'); if (!b) return;
+  const r = b.getBoundingClientRect();
+  if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) return;
+  E.playing ? stop() : start();
+});
+document.addEventListener("pointercancel", e => { if (e.pointerId === playPress) playPress = null; });
 
 /* ---------- Edge wheels: a ribbed cylinder seen from its side; drag sideways to turn it ---------- */
 const TRANS_CHIPS = [0, 0.5, 1, 2, 3, 4, 6, 8, 12];
@@ -1033,7 +1061,7 @@ document.addEventListener("click", async e => {
   const act = el.dataset.act;
   if (act === "close-sheet" && e.target !== el) return;
   switch (act) {
-    case "toggle": E.playing ? stop() : await start(); break;
+    case "toggle": if (e.detail === 0) { E.playing ? stop() : await start(); } break; // keyboard; touches go through pointerup
     case "tap": if (e.detail === 0) tap(); break; // keyboard; touches and clicks count on pointerdown
     case "minus": setBpm(M.bpm - 1); break;
     case "plus": setBpm(M.bpm + 1); break;
