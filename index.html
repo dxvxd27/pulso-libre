@@ -8,7 +8,8 @@
 <meta name="theme-color" content="#0F131A">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<!-- "black", not "black-translucent": the translucent bar makes iOS leave a dead strip under the tab bar in the installed app. -->
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
 <meta name="apple-mobile-web-app-title" content="Pulso">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon-192.png" type="image/png">
@@ -55,6 +56,9 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 button, input, select { font: inherit; color: inherit; }
+/* iPhone: no double-tap zoom, no text selection or callout while tapping fast. */
+html { touch-action: manipulation; -webkit-text-size-adjust: 100%; }
+button, canvas { touch-action: manipulation; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
 button { cursor: pointer; }
 :focus-visible { outline: 2px solid var(--led); outline-offset: 2px; }
 
@@ -94,7 +98,8 @@ h2 { font-family: var(--display); font-weight: 800; text-transform: uppercase; l
 .icon-btn svg { width: 18px; height: 18px; }
 
 input[type=text], input[type=number], input[type=search], select {
-  background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 9px 12px; width: 100%; min-width: 0; }
+  background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 9px 12px; width: 100%; min-width: 0;
+  font-size: 16px; /* under 16px, iPhone zooms in when the field is focused */ }
 input[type=range] { width: 100%; accent-color: var(--led); }
 .field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 
@@ -663,6 +668,11 @@ function tap() {
     setBpm(60000 / iv);
   }
 }
+// Count a tap the moment the finger lands, so fast taps are never lost or read as a double-tap.
+document.addEventListener("pointerdown", e => {
+  if (!e.target.closest('[data-act="tap"]')) return;
+  e.preventDefault(); tap();
+});
 
 /* ---------- Edge wheels: a ribbed cylinder seen from its side; drag sideways to turn it ---------- */
 const TRANS_CHIPS = [0, 0.5, 1, 2, 3, 4, 6, 8, 12];
@@ -1024,7 +1034,7 @@ document.addEventListener("click", async e => {
   if (act === "close-sheet" && e.target !== el) return;
   switch (act) {
     case "toggle": E.playing ? stop() : await start(); break;
-    case "tap": tap(); break;
+    case "tap": if (e.detail === 0) tap(); break; // keyboard; touches and clicks count on pointerdown
     case "minus": setBpm(M.bpm - 1); break;
     case "plus": setBpm(M.bpm + 1); break;
     case "cycle": {
