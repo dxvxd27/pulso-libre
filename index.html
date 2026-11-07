@@ -1280,7 +1280,15 @@ document.addEventListener("submit", async e => {
 });
 
 Store.init();
-if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => navigator.serviceWorker.register("sw.js", { updateViaCache: "none" }).catch(() => {}));
+  // When a new version takes over, reload once to show it, unless the metronome is playing.
+  const hadSW = !!navigator.serviceWorker.controller; let reloaded = false;
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (!hadSW || reloaded || E.playing) return;
+    reloaded = true; location.reload();
+  });
+}
 })();
 </script>
 </body>
